@@ -64,7 +64,7 @@ main{max-width:720px;margin:0 auto;padding:6px 16px 150px}
 .stat.no strong::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:#ff9a94;margin-inline-end:7px;vertical-align:middle}
 
 /* بلاطات السلع */
-.chips{display:flex;gap:10px;overflow-x:auto;padding:9px 2px 14px;margin:0 -16px;padding-inline:16px;scrollbar-width:none;scroll-snap-type:x proximity}
+.chips{display:flex;gap:10px;overflow-x:auto;padding:9px 2px 14px;padding-inline:16px;scroll-padding-inline:16px;scrollbar-width:none;scroll-snap-type:x proximity}
 .chips::-webkit-scrollbar{display:none}
 .chip{flex:none;scroll-snap-align:start;min-width:68px;white-space:nowrap;padding-inline:12px !important;border:1px solid var(--line);background:var(--surface);border-radius:20px;
   padding:9px 4px 8px;font-size:.76rem;font-weight:500;color:var(--ink);display:flex;flex-direction:column;align-items:center;gap:4px;
@@ -72,6 +72,18 @@ main{max-width:720px;margin:0 auto;padding:6px 16px 150px}
 .chip span{font-size:1.55rem;line-height:1}
 .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:600}
 .chip:active{transform:scale(.96)}
+.chips-wrap{position:relative;margin:0 -16px}
+.arr{display:none;position:absolute;top:46%;transform:translateY(-50%);z-index:3;width:38px;height:38px;border-radius:50%;border:0;
+  background:var(--surface);color:var(--ink);box-shadow:var(--shadow);font-size:1.4rem;line-height:1;padding:0 0 3px}
+.arr.l{left:8px} .arr.r{right:8px}
+.arr:hover{background:var(--brand);color:#fff}
+@media (hover:hover) and (pointer:fine){
+  .arr{display:block}
+  .chips{scrollbar-width:thin;scrollbar-color:var(--line) transparent;cursor:grab;padding-inline:54px;scroll-padding-inline:54px}
+  .chips::-webkit-scrollbar{display:block;height:7px}
+  .chips::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+}
+.chips.drag{cursor:grabbing;scroll-snap-type:none;user-select:none}
 .chip{position:relative}
 .chip.hot{border-color:color-mix(in srgb,var(--no) 40%,var(--line))}
 .chip .cb{position:absolute;top:-6px;inset-inline-end:-3px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;font-style:normal;font-size:.7rem;font-weight:700;line-height:20px;text-align:center;color:#fff;background:var(--no);box-shadow:0 0 0 2px var(--bg)}
@@ -119,6 +131,7 @@ main{max-width:720px;margin:0 auto;padding:6px 16px 150px}
 .nrow{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
 .nrow .tile{width:46px;height:46px;border-radius:15px;font-size:1.4rem}
 .nrow .src{margin-top:9px;display:flex;flex-direction:column;gap:6px}
+.nrow .src .more{border:0;background:var(--brand-soft);color:var(--brand);font-weight:600;font-size:.82rem;border-radius:14px;padding:9px 12px}
 .nrow .src a.hl{background:var(--bg);color:var(--ink);text-decoration:none;border-radius:14px;padding:9px 12px;display:flex;flex-direction:column;gap:2px}
 .nrow .src a.hl span{font-size:.86rem;font-weight:500;line-height:1.6;overflow-wrap:anywhere}
 .nrow .src a.hl small{font-size:.74rem;color:var(--brand);font-weight:500}
@@ -207,7 +220,11 @@ footer{max-width:720px;margin:0 auto;padding:0 20px 140px;color:var(--mute);font
     </div>
     <div class="stats" id="stats"></div>
   </section>
-  <div class="chips" id="chips"></div>
+  <div class="chips-wrap">
+    <button type="button" class="arr r" id="chipsPrev" aria-label="السابق">›</button>
+    <div class="chips" id="chips"></div>
+    <button type="button" class="arr l" id="chipsNext" aria-label="التالي">‹</button>
+  </div>
   <div id="list"></div>
   <div id="map" hidden></div>
 </main>
@@ -408,6 +425,7 @@ const NEWS_EXTRA = {potato:{n:'بطاطس',e:'🥔'}, veg:{n:'خضر وفواك�
 const SCARCE_ST = ['out', 'available', 'mixed'];
 const ST_TAG = {out:'ندرة', available:'وفرة', mixed:'متضارب', price_up:'غلاء', price_down:'انخفاض أسعار'};
 let newsKind = 'all';
+const newsOpen = new Set();   // سلع فُتحت قائمة أخبارها كاملة
 let news = [], newsAt = 0;
 async function loadNews(){
   if (DEMO || Date.now() - newsAt < 600e3) return;
@@ -447,12 +465,13 @@ function newsHtml(){
     if (up) badges += '<span class="badge px">غلاء حسب الأخبار</span>';
     else if (down) badges += '<span class="badge ok">انخفاض أسعار حسب الأخبار</span>';
     const w = [...new Set(list.flatMap(x => x.wilayas || []))].slice(0, 8);
-    const links = list.slice(0, 4).filter(x => /^https?:\/\//.test(x.source_url)).map(x =>
+    const open = newsOpen.has(item) || filter === item, cap = open ? 60 : 4;
+    const links = list.slice(0, cap).filter(x => /^https?:\/\//.test(x.source_url)).map(x =>
       `<a class="hl" href="${esc(x.source_url)}" target="_blank" rel="noopener noreferrer"><span>${esc(x.title)}</span><small>${ST_TAG[x.status] || ''}، ${esc(x.source_name)}، ${ago(x.published_at)}</small></a>`).join('');
     return `<div class="nrow"><div class="tile">${it.e}</div><div class="bd">
       <div class="row1"><b>${esc(it.n)}</b>${badges}<span class="badge src">${list.length > 1 ? list.length + ' أخبار' : 'مصدر عام'}</span></div>
       <div class="facts"><span class="fact">📍 ${w.length ? esc(w.join('، ')) : 'على المستوى الوطني'}</span><span class="fact">🕒 ${ago(list[0].published_at)}</span></div>
-      <div class="src">${links}</div></div></div>`;
+      <div class="src">${links}${list.length > 4 && filter !== item ? `<button type="button" class="more" data-more="${esc(item)}">${open ? 'إخفاء' : 'عرض كل الأخبار (' + list.length + ')'}</button>` : ''}</div></div></div>`;
   }).join('') || '<div class="lnote">لا أخبار من هذا النوع حالياً.</div>';
   return `<div class="news"><h2>📰 من الأخبار والمصادر العامة</h2>
     <div class="sub">عناوين عن الندرة والأسعار على مستوى الولاية أو الوطن، وليست بلاغات من محلات. قد تكون متأخرة أو متضاربة.</div>
@@ -517,6 +536,32 @@ function newsHot(){
     m.set(n.item, e);
   }
   return m;
+}
+
+/* تمرير القائمة الأفقية في الكمبيوتر: عجلة الفأرة، السحب بالفأرة، وأزرار الأسهم */
+function setupChipsScroll(){
+  const box = $('#chips'); if (!box) return;
+  const dir = () => getComputedStyle(box).direction === 'rtl' ? -1 : 1;
+  box.addEventListener('wheel', e => {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    e.preventDefault(); box.scrollBy({left: e.deltaY * dir()});
+  }, {passive:false});
+  let down = false, moved = false, sx = 0, sl = 0;
+  box.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    down = true; moved = false; sx = e.clientX; sl = box.scrollLeft;
+  });
+  window.addEventListener('pointermove', e => {
+    if (!down) return;
+    const dx = e.clientX - sx;
+    if (Math.abs(dx) > 5){ moved = true; box.classList.add('drag'); }
+    if (moved) box.scrollLeft = sl - dx;
+  });
+  window.addEventListener('pointerup', () => { if (down){ down = false; box.classList.remove('drag'); } });
+  box.addEventListener('click', e => { if (moved){ e.stopPropagation(); e.preventDefault(); moved = false; } }, true);
+  const step = d => box.scrollBy({left: d * dir() * 320, behavior:'smooth'});
+  $('#chipsNext').onclick = () => step(1);
+  $('#chipsPrev').onclick = () => step(-1);
 }
 
 function renderChips(){
@@ -676,6 +721,7 @@ function shareReport(item, status, place){
 /* ============ الأحداث ============ */
 document.addEventListener('click', async e => {
   const t = e.target.closest('button, a'); if (!t) return;
+  if (t.dataset.more){ const k = t.dataset.more; newsOpen.has(k) ? newsOpen.delete(k) : newsOpen.add(k); render(); return; }
   if (t.dataset.nk){ newsKind = t.dataset.nk; render(); return; }
   if (t.dataset.openloc){ openLocSheet(); return; }
   if (t.dataset.gps){
@@ -719,6 +765,7 @@ setInterval(() => { if (!document.hidden) load(); }, 45000);
 
 /* ============ البدء ============ */
 (async function init(){
+  setupChipsScroll();
   renderChips(); renderBanners();
   if (manual) locLabel(); else await locate();
   await load();
