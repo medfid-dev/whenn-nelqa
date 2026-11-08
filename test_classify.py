@@ -14,6 +14,11 @@ cases = [
     ("لا توجد ندرة في الحليب حسب وزارة التجارة", "milk", "available"),
     ("وفرة البطاطس في الأسواق بعد تدخل الدولة", "potato", "available"),
     ("طوابير أمام محلات بيع السميد في وهران", "semolina", "out"),
+    ("الحليب غير متوفر في بلدية الرويبة", "milk", "out"),
+    ("عدم توفر السميد في عدة محلات بسطيف", "semolina", "out"),
+    ("وزارة التجارة تؤكد وفرة السكر وتنفي أي ندرة", "sugar", "available"),
+    ("الزيت متوفر بكثرة في الأسواق", "oil", "available"),
+    ("ليست هناك ندرة في الحليب حسب التجار", "milk", "available"),
     # أسعار
     ("ارتفاع أسعار البطاطس في أسواق الجملة بوهران", "potato", "price_up"),
     ("مرضى السكري يشتكون من غلاء الأنسولين", "medicine", "price_up"),
@@ -85,6 +90,23 @@ fetch_news.time.sleep = lambda s: None
 rows = fetch_news.collect(verbose=False)
 assert len(rows) == 1, rows                       # الخبران بعنوان واحد → خبر واحد
 assert rows[0]["source_name"] == "التلفزيون الجزائري" and rows[0]["title"] == "ندرة الزيت في الأسواق", rows
+
+# عناوين حقيقية فاتت المصنّف سابقاً (غيابها، قلة، تعود إلى الأسواق، صعوبة العثور)
+for title, item, status in [
+    ('"أين ذهبت البطاطا؟" شكاوى وسخرية في الجزائر بعد غيابها عن بعض الأسواق', "potato", "out"),
+    ("المواطنون يشتكون من قلة الحليب في سطيف", "milk", "out"),
+    ("البطاطا تعود إلى الأسواق مع دخول المحصول الجديد", "potato", "available"),
+    ("صعوبة العثور على الزيت في محلات وهران", "oil", "out"),
+]:
+    got = classify(title)
+    ok = any(g[0] == item and g[1] == status for g in got)
+    bad += (not ok)
+    print(("✓" if ok else "✗"), title[:55], "→", got)
+# وعد مستقبلي لا يُحسب وفرة
+got = classify("البطاطا ستعود إلى الأسواق خلال أسبوع")
+ok = not any(g[1] in ("out", "available", "mixed") for g in got)
+bad += (not ok)
+print(("✓" if ok else "✗"), "وعد مستقبلي لا يُحسب وفرة", "→", got)
 
 print("\nفشل:", bad)
 raise SystemExit(1 if bad else 0)
