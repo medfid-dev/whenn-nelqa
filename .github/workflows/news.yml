@@ -1,0 +1,25 @@
+name: جمع أخبار الندرة
+on:
+  schedule:
+    - cron: "17 */3 * * *"     # كل 3 ساعات
+  workflow_dispatch: {}          # تشغيل يدوي من تبويب Actions
+permissions:
+  contents: read
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: اختبارات التصنيف
+        working-directory: scraper
+        run: python test_classify.py
+      - name: جلب الأخبار وإرسالها إلى Supabase
+        working-directory: scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python fetch_news.py
