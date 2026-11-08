@@ -221,6 +221,9 @@ footer{max-width:720px;margin:0 auto;padding:0 20px 140px;color:var(--mute);font
         <option value="10" selected>ضمن 10 كم</option>
         <option value="25">ضمن 25 كم</option>
         <option value="60">ضمن 60 كم</option>
+        <option value="150">ضمن 150 كم</option>
+        <option value="400">ضمن 400 كم</option>
+        <option value="0">كل الجزائر</option>
       </select>
     </div>
     <div class="stats" id="stats"></div>
@@ -235,7 +238,7 @@ footer{max-width:720px;margin:0 auto;padding:0 20px 140px;color:var(--mute);font
 </main>
 
 <footer>
-  البلاغات من المستخدمين ومن دون تحقق رسمي، فقد لا تكون دقيقة أو حديثة. وقسم «من الأخبار» عناوين من مصادر عامة عن الندرة والغلاء مع رابط كل خبر.<br>
+  البلاغات من المستخدمين ومن دون تحقق رسمي، والولاية المعروضة مقدَّرة من الإحداثيات وقد تخطئ قرب الحدود بين الولايات، فقد لا تكون دقيقة أو حديثة. وقسم «من الأخبار» عناوين من مصادر عامة عن الندرة والغلاء مع رابط كل خبر.<br>
   لا يعرض التطبيق أسعاراً ولا يجمع أسماء أو أرقاماً. البلاغات تختفي بعد ساعات قليلة.
 </footer>
 
@@ -404,12 +407,14 @@ async function load(){
       seedDemo();
       reports = JSON.parse(lsGet('wl_demo', '[]')).filter(r => r.created_at > cutoff);
     } else {
-      const dLat = radius / 111, dLng = radius / (111 * Math.max(.2, Math.cos(pos[0] * Math.PI / 180)));
       const p = new URLSearchParams();
       p.set('select', 'id,item,status,lat,lng,place,created_at');
       p.append('created_at', 'gte.' + cutoff);
-      p.append('lat', 'gte.' + (pos[0] - dLat)); p.append('lat', 'lte.' + (pos[0] + dLat));
-      p.append('lng', 'gte.' + (pos[1] - dLng)); p.append('lng', 'lte.' + (pos[1] + dLng));
+      if (radius > 0){   // المسافة 0 = «كل الجزائر»: بلا حد جغرافي
+        const dLat = radius / 111, dLng = radius / (111 * Math.max(.2, Math.cos(pos[0] * Math.PI / 180)));
+        p.append('lat', 'gte.' + (pos[0] - dLat)); p.append('lat', 'lte.' + (pos[0] + dLat));
+        p.append('lng', 'gte.' + (pos[1] - dLng)); p.append('lng', 'lte.' + (pos[1] + dLng));
+      }
       if (filter !== 'all') p.set('item', 'eq.' + filter);
       p.set('order', 'created_at.desc'); p.set('limit', '800');
       const r = await fetch(CONFIG.SUPABASE_URL + '/rest/v1/wl_reports?' + p, {
@@ -508,13 +513,37 @@ async function send(rep){
   return true;
 }
 
+/* ============ الولاية من الإحداثيات (تقديرية: أقرب مركز ولاية) ============ */
+const WILAYA_GEO = [
+['أدرار',27.874,-0.294],['الشلف',36.165,1.334],['الأغواط',33.800,2.865],['أم البواقي',35.875,7.114],['باتنة',35.556,6.174],
+['بجاية',36.752,5.084],['بسكرة',34.850,5.728],['بشار',31.617,-2.217],['البليدة',36.470,2.829],['البويرة',36.375,3.902],
+['تمنراست',22.785,5.523],['تبسة',35.404,8.124],['تلمسان',34.878,-1.315],['تيارت',35.371,1.317],['تيزي وزو',36.712,4.045],
+['الجزائر العاصمة',36.754,3.059],['الجلفة',34.673,3.263],['جيجل',36.820,5.766],['سطيف',36.191,5.413],['سعيدة',34.830,0.152],
+['سكيكدة',36.876,6.909],['سيدي بلعباس',35.190,-0.631],['عنابة',36.900,7.767],['قالمة',36.462,7.426],['قسنطينة',36.365,6.615],
+['المدية',36.264,2.750],['مستغانم',35.931,0.089],['المسيلة',35.705,4.542],['معسكر',35.396,0.140],['ورقلة',31.949,5.325],
+['وهران',35.697,-0.633],['البيض',33.683,1.019],['إليزي',26.484,8.468],['برج بوعريريج',36.073,4.761],['بومرداس',36.766,3.477],
+['الطارف',36.767,8.314],['تندوف',27.674,-8.147],['تيسمسيلت',35.607,1.811],['الوادي',33.368,6.867],['خنشلة',35.436,7.143],
+['سوق أهراس',36.286,7.951],['تيبازة',36.589,2.447],['ميلة',36.450,6.264],['عين الدفلى',36.264,1.968],['النعامة',33.267,-0.312],
+['عين تموشنت',35.298,-1.140],['غرداية',32.490,3.674],['غليزان',35.737,0.556],['تيميمون',29.263,0.241],['برج باجي مختار',21.327,0.947],
+['أولاد جلال',34.428,5.066],['بني عباس',30.131,-2.167],['عين صالح',27.197,2.481],['عين قزام',19.567,5.772],['تقرت',33.106,6.063],
+['جانت',24.554,9.485],['المغير',33.954,5.924],['المنيعة',30.581,2.881]
+];
+function wilayaOf(lat, lng){
+  let best = null, bd = Infinity;
+  for (const w of WILAYA_GEO){
+    const d = km(lat, lng, w[1], w[2]);
+    if (d < bd){ bd = d; best = w[0]; }
+  }
+  return bd <= 250 ? best : '';   // أبعد من 250 كم عن أي مركز: لا نخمّن
+}
+
 /* ============ التجميع والعرض ============ */
 function buildGroups(){
   const map = new Map();
   for (const r of reports){
     if (filter !== 'all' && r.item !== filter) continue;
     const d = km(pos[0], pos[1], r.lat, r.lng);
-    if (d > radius) continue;
+    if (radius > 0 && d > radius) continue;
     const key = r.item + '|' + r.lat.toFixed(3) + ',' + r.lng.toFixed(3);
     let g = map.get(key);
     if (!g){ g = {key, item:r.item, lat:r.lat, lng:r.lng, d, list:[]}; map.set(key, g); }
@@ -524,6 +553,7 @@ function buildGroups(){
     g.list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     g.last = g.list[0];
     g.place = (g.list.find(x => x.place) || {}).place || '';
+    g.wil = wilayaOf(g.lat, g.lng);
     const twoH = Date.now() - 2 * 3600e3;
     g.recent = g.list.filter(x => x.status === g.last.status && new Date(x.created_at).getTime() > twoH).length;
     return g;
@@ -607,7 +637,7 @@ function render(){
   if (!groups.length){
     const name = filter === 'all' ? 'أي سلعة' : (BY_ID[filter] || NEWS_EXTRA[filter] || {n: filter}).n;
     list.innerHTML = newsHtml() + `<div class="empty"><div class="big">🛰️</div>
-      لا توجد بلاغات حديثة عن <b>${esc(name)}</b> ضمن ${radius} كم.<br>
+      لا توجد بلاغات حديثة عن <b>${esc(name)}</b> ${radius > 0 ? 'ضمن ' + radius + ' كم' : 'في كل الجزائر'}.<br>
       اضغط «أبلغ» وكن أول من يخبر جيرانه.</div>`;
   } else {
     list.innerHTML = newsHtml() + groups.map((g, i) => {
@@ -623,6 +653,7 @@ function render(){
           </div>
           <div class="facts">
             <span class="fact">📍 ${g.place ? esc(g.place) : 'موقع على الخريطة'}</span>
+            ${g.wil ? '<span class="fact" title="الولاية مقدَّرة من الإحداثيات">🗺️ ولاية ' + esc(g.wil) + '</span>' : ''}
             <span class="fact">🧭 ${fmtDist(g.d)}</span>
             <span class="fact">🕒 ${ago(g.last.created_at)}</span>
             ${g.recent > 1 ? '<span class="fact hl">' + g.recent + ' بلاغات متطابقة</span>' : ''}
@@ -653,7 +684,7 @@ function renderMap(){
     const ok = g.last.status === 'available', it = BY_ID[g.item];
     L.circleMarker([g.lat, g.lng], {radius:11, color: ok ? '#15803d' : '#b91c1c', fillColor: ok ? '#22c55e' : '#ef4444', fillOpacity:.85})
       .addTo(layer)
-      .bindPopup(`<b>${it.e} ${it.n}</b> — ${ok ? 'متوفر' : 'نفد'}<br>${g.place ? esc(g.place) + '<br>' : ''}${ago(g.last.created_at)}`);
+      .bindPopup(`<b>${it.e} ${it.n}</b> — ${ok ? 'متوفر' : 'نفد'}<br>${g.place ? esc(g.place) + '<br>' : ''}${g.wil ? 'ولاية ' + esc(g.wil) + '<br>' : ''}${ago(g.last.created_at)}`);
     pts.push([g.lat, g.lng]);
   });
   if (pts.length > 1) map.fitBounds(pts, {padding:[40, 40], maxZoom:15});
