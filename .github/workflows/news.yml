@@ -1,8 +1,8 @@
 name: جمع أخبار الندرة
 on:
   schedule:
-    - cron: "17 */3 * * *"     # كل 3 ساعات
-  workflow_dispatch: {}          # تشغيل يدوي من تبويب Actions
+    - cron: "17 */3 * * *"
+  workflow_dispatch: {}
 permissions:
   contents: read
 jobs:
