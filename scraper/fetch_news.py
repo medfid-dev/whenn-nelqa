@@ -278,26 +278,72 @@ def collect(verbose=True, debug=False):
     return rows
 
 # ───────── Supabase ─────────
-def sb_request(method, path, body=None, extra=None):
-    base = os.environ["SUPABASE_URL"].rstrip("/")
-    key = os.environ["SUPABASE_SERVICE_KEY"]
+def clean_url(u: str) -> str:
+    u = (u or "").strip().strip("'\"").rstrip("/")
+    for suffix in ("/rest/v1", "/rest"):
+        if u.endswith(suffix):
+            u = u[: -len(suffix)].rstrip("/")
+    return u
+
+def sb_request(method, path, body=None, extra=None, quiet=False):
+    base = clean_url(os.environ["SUPABASE_URL"])
+    key = os.environ["SUPABASE_SERVICE_KEY"].strip()
     headers = {"apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json"}
     headers.update(extra or {})
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(base + "/rest/v1/" + path, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
-            return r.status
+            return r.status, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
-        print("خطأ من Supabase:", e.code, e.read().decode("utf-8", "replace")[:400])
-        print("الطلب:", method, path.split("?")[0])
-        raise
+        return e.code, e.read().decode("utf-8", "replace")
+
+def explain(status, body):
+    code = ""
+    try:
+        code = json.loads(body).get("code", "")
+    except Exception:
+        pass
+    if code == "PGRST205" or "Could not find the table" in body:
+        return "الجدول wl_news غير موجود في هذا المشروع. شغّل setup_news.sql في SQL Editor ثم أعد المحاولة."
+    if code == "PGRST125" or "Invalid path" in body:
+        return "مسار الطلب غير صالح: راجع SUPABASE_URL، يجب أن يكون https://xxxx.supabase.co فقط."
+    if status in (401, 403) or "Invalid API key" in body or "secret API key" in body:
+        return "المفتاح مرفوض: تأكد أن SUPABASE_SERVICE_KEY هو المفتاح السري (secret / service_role) الصحيح وبلا مسافات."
+    if status == 404:
+        return "404 بلا رمز واضح: غالباً SUPABASE_URL يشير إلى مشروع أو عنوان خاطئ."
+    if status == 400:
+        return "قيد في الجدول رفض بعض الصفوف (راجع نص الرد أعلاه)."
+    return "خطأ غير متوقع، أرسل نص الرد أعلاه للمساعدة."
+
+def preflight():
+    raw = os.environ.get("SUPABASE_URL", "")
+    u = clean_url(raw)
+    print("— فحص الاتصال بـ Supabase —")
+    print(f"  طول الرابط: {len(u)} | يبدأ بـ https: {u.startswith('https://')} | ينتهي بـ supabase.co: {u.endswith('.supabase.co')}")
+    if raw.strip() != u:
+        print("  (صُحّح الرابط تلقائياً: أُزيلت مسافات أو / أو rest/v1 زائدة)")
+    st, body = sb_request("GET", "wl_news?select=id&limit=1")
+    if st == 200:
+        print("  الجدول wl_news موجود والمفتاح مقبول ✓")
+        return True
+    print(f"  فشل الفحص: HTTP {st}")
+    print("  رد Supabase:", body[:300])
+    print("  التشخيص:", explain(st, body))
+    return False
 
 def push(rows):
+    if not preflight():
+        raise SystemExit(1)
     if not rows:
         print("لا بلاغات جديدة."); return
-    st = sb_request("POST", "wl_news?on_conflict=source_url,item", rows,
-                    {"Prefer": "resolution=ignore-duplicates,return=minimal"})
+    st, body = sb_request("POST", "wl_news?on_conflict=source_url,item", rows,
+                          {"Prefer": "resolution=ignore-duplicates,return=minimal"})
+    if st not in (200, 201, 204):
+        print(f"فشل الإرسال: HTTP {st}")
+        print("رد Supabase:", body[:400])
+        print("التشخيص:", explain(st, body))
+        raise SystemExit(1)
     print(f"أُرسل {len(rows)} بلاغ (HTTP {st}).")
     old = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     sb_request("DELETE", "wl_news?published_at=lt." + urllib.parse.quote(old), None, {"Prefer": "return=minimal"})
