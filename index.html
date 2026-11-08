@@ -64,7 +64,7 @@ main{max-width:720px;margin:0 auto;padding:6px 16px 150px}
 .stat.no strong::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:#ff9a94;margin-inline-end:7px;vertical-align:middle}
 
 /* بلاطات السلع */
-.chips{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 14px;margin:0 -16px;padding-inline:16px;scrollbar-width:none;scroll-snap-type:x proximity}
+.chips{display:flex;gap:10px;overflow-x:auto;padding:9px 2px 14px;margin:0 -16px;padding-inline:16px;scrollbar-width:none;scroll-snap-type:x proximity}
 .chips::-webkit-scrollbar{display:none}
 .chip{flex:none;scroll-snap-align:start;min-width:68px;white-space:nowrap;padding-inline:12px !important;border:1px solid var(--line);background:var(--surface);border-radius:20px;
   padding:9px 4px 8px;font-size:.76rem;font-weight:500;color:var(--ink);display:flex;flex-direction:column;align-items:center;gap:4px;
@@ -72,6 +72,11 @@ main{max-width:720px;margin:0 auto;padding:6px 16px 150px}
 .chip span{font-size:1.55rem;line-height:1}
 .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:600}
 .chip:active{transform:scale(.96)}
+.chip{position:relative}
+.chip.hot{border-color:color-mix(in srgb,var(--no) 40%,var(--line))}
+.chip .cb{position:absolute;top:-6px;inset-inline-end:-3px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;font-style:normal;font-size:.7rem;font-weight:700;line-height:20px;text-align:center;color:#fff;background:var(--no);box-shadow:0 0 0 2px var(--bg)}
+.chip .cb.px{background:var(--px)}
+@media (prefers-color-scheme:dark){.chip .cb{color:#1a0a0a}.chip .cb.px{color:#150d30}}
 
 .banner{background:var(--warn-soft);color:var(--warn);border-radius:16px;padding:9px 13px;font-size:.78rem;margin-bottom:10px;line-height:1.6}
 .banner b{font-weight:700}
@@ -233,7 +238,7 @@ const CONFIG = {
 };
 
 const ITEMS = [
-  {id:'milk',n:'حليب',e:'🥛'},{id:'baby_milk',n:'حليب الأطفال',e:'🍼'},{id:'oil',n:'زيت',e:'🫒'},
+  {id:'milk',n:'حليب',e:'🥛'},{id:'baby_milk',n:'حليب الأطفال',e:'🍼'},{id:'oil',n:'زيت',e:'🛢️'},
   {id:'semolina',n:'سميد',e:'🌾'},{id:'flour',n:'فرينة',e:'🌽'},{id:'bread',n:'خبز',e:'🥖'},
   {id:'sugar',n:'سكر',e:'🍬'},{id:'coffee',n:'قهوة',e:'☕'},{id:'eggs',n:'بيض',e:'🥚'},
   {id:'chicken',n:'دجاج',e:'🍗'},{id:'rice',n:'أرز',e:'🍚'},{id:'pasta',n:'معجنات',e:'🍝'},
@@ -423,6 +428,9 @@ function newsHtml(){
   const all = news.filter(n => filter === 'all' || n.item === filter);
   if (!all.length) return '';
   const rows = all.filter(kindOk);
+  // الندرة أولاً، ثم الأخبار المتضاربة، ثم الوفرة، ثم الأسعار؛ وداخل كل نوع الأحدث أولاً
+  const RANK = {out:0, mixed:1, available:2, price_up:3, price_down:4};
+  rows.sort((x, y) => (RANK[x.status] ?? 9) - (RANK[y.status] ?? 9) || new Date(y.published_at) - new Date(x.published_at));
   const tabs = [['all','الكل'],['scarce','الندرة'],['price','الأسعار']].map(([k, l]) =>
     `<button type="button" class="${newsKind === k ? 'on' : ''}" data-nk="${k}">${l}</button>`).join('');
   const by = new Map();
@@ -498,10 +506,31 @@ function buildGroups(){
   }).sort((a, b) => a.d - b.d);
 }
 
+// سلع وردت عنها أخبار ندرة أو غلاء: تُحصى كل الأخبار ما عدا الوفرة وانخفاض الأسعار
+function newsHot(){
+  const m = new Map();
+  for (const n of news){
+    if (n.status === 'available' || n.status === 'price_down') continue;
+    const e = m.get(n.item) || {scarce:0, price:0, last:0};
+    if (n.status === 'price_up') e.price++; else e.scarce++;
+    e.last = Math.max(e.last, new Date(n.published_at).getTime());
+    m.set(n.item, e);
+  }
+  return m;
+}
+
 function renderChips(){
-  const all = [{id:'all', n:'الكل', e:'🔎'}, ...ITEMS];
-  $('#chips').innerHTML = all.map(i =>
-    `<button class="chip ${filter === i.id ? 'on' : ''}" data-f="${i.id}" type="button"><span>${i.e}</span>${i.n}</button>`).join('');
+  const hot = newsHot();
+  // أكثر من خبر عن السلعة => تتقدم في القائمة الأفقية، الأكثر أخباراً ثم الأحدث
+  const hotIds = [...hot.entries()].filter(([, e]) => e.scarce + e.price >= 2)
+    .sort((a, b) => (b[1].scarce + b[1].price) - (a[1].scarce + a[1].price) || b[1].last - a[1].last).map(([id]) => id);
+  const hotItems = hotIds.map(id => BY_ID[id] || {id, ...(NEWS_EXTRA[id] || {n:id, e:'📰'})});
+  const all = [{id:'all', n:'الكل', e:'🔎'}, ...hotItems, ...ITEMS.filter(i => !hotIds.includes(i.id))];
+  $('#chips').innerHTML = all.map(i => {
+    const e = hot.get(i.id), cnt = e ? e.scarce + e.price : 0, isHot = cnt >= 2;
+    return `<button class="chip ${filter === i.id ? 'on' : ''} ${isHot ? 'hot' : ''}" data-f="${i.id}" type="button">` +
+      (isHot ? `<i class="cb ${e.scarce ? 'no' : 'px'}">${cnt}</i>` : '') + `<span>${i.e}</span>${i.n}</button>`;
+  }).join('');
 }
 
 function renderBanners(){
@@ -526,7 +555,7 @@ function render(){
   buildGroups(); renderChips(); renderBanners(); renderStats();
   const list = $('#list');
   if (!groups.length){
-    const name = filter === 'all' ? 'أي سلعة' : BY_ID[filter].n;
+    const name = filter === 'all' ? 'أي سلعة' : (BY_ID[filter] || NEWS_EXTRA[filter] || {n: filter}).n;
     list.innerHTML = newsHtml() + `<div class="empty"><div class="big">🛰️</div>
       لا توجد بلاغات حديثة عن <b>${esc(name)}</b> ضمن ${radius} كم.<br>
       اضغط «أبلغ» وكن أول من يخبر جيرانه.</div>`;
