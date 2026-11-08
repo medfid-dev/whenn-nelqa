@@ -15,17 +15,26 @@ from email.utils import parsedate_to_datetime
 
 # ───────── المصادر: لكل جريدة عدة مسارات محتملة، يُستخدم أول مسار يعمل ─────────
 SOURCES = [
-    ("النهار أونلاين",   ["https://www.ennaharonline.com/feed"]),   # مؤكَّد
+    ("النهار أونلاين",   ["https://www.ennaharonline.com/feed"]),
     ("الشروق أونلاين",   ["https://www.echoroukonline.com/feed", "https://www.echoroukonline.com/feed/"]),
     ("البلاد",           ["https://www.elbilad.net/feed", "https://www.elbilad.net/rss"]),
     ("الخبر",            ["https://www.elkhabar.com/feed", "https://www.elkhabar.com/rss"]),
-    ("شهاب برس",         ["https://www.shihabpresse.dz/feed"]),
     ("الجزائر اليوم",    ["https://www.aljazairalyoum.dz/feed"]),
     ("أوراس",            ["https://www.awras.com/feed"]),
     ("اللقاء",           ["https://elikaaonline.com/feed"]),
-    ("الأيام نيوز",      ["https://www.elayem.dz/feed", "https://elayem.dz/feed"]),
-    ("المساء",           ["https://www.el-massa.com/feed"]),
+    # أُزيلت شهاب برس والأيام نيوز والمساء: تغلق الاتصال أو لا خلاصة لها. أخبارها تصل عبر جوجل أدناه.
 ]
+
+# خلاصات أخبار جوجل: بحث مجاني بصيغة RSS يغطي كل الصحف الجزائرية (آخر يومين)
+GOOGLE_QUERIES = [
+    "ندرة الزيت الجزائر", "ندرة الحليب الجزائر", "ندرة السميد الجزائر", "ندرة الفرينة الجزائر",
+    "ندرة البطاطس الجزائر", "ندرة الأدوية الجزائر", "ندرة غاز البوتان الجزائر", "ندرة الوقود الجزائر",
+    "ندرة السكر الجزائر", "ندرة الدجاج الجزائر", "ندرة البيض الجزائر", "ندرة السيولة الجزائر",
+    "نفاد الخبز الجزائر", "اختفاء من الأسواق الجزائر", "طوابير الجزائر مواد غذائية",
+]
+def google_url(q):
+    return ("https://news.google.com/rss/search?q=" + urllib.parse.quote(q + " when:2d")
+            + "&hl=ar&gl=DZ&ceid=DZ:ar")
 
 MAX_AGE_H = 36          # تجاهل ما هو أقدم
 MAX_PER_FEED = 60
@@ -153,7 +162,7 @@ def classify(title: str, summary: str = ""):
 
 # ───────── جلب RSS ─────────
 def http_get(url, timeout=20):
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/rss+xml, application/xml, text/xml, */*"})
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
 
@@ -183,6 +192,7 @@ def parse_feed(xml_bytes):
             "title": strip_html(it.findtext("title")),
             "link": (it.findtext("link") or "").strip(),
             "summary": strip_html(it.findtext("description")),
+            "source": strip_html(it.findtext("source")),
             "date": parse_date(it.findtext("pubDate") or it.findtext("{http://purl.org/dc/elements/1.1/}date")),
         })
     # Atom
@@ -200,41 +210,71 @@ def parse_feed(xml_bytes):
         })
     return out
 
-def collect(verbose=True):
+def add_rows(entries, source_name, now, cutoff, rows, debug, google=False, seen=None):
+    kept = inwin = 0
+    for e in entries[:MAX_PER_FEED]:
+        title = e["title"]
+        if not title or not re.match(r"^https?://", e["link"] or ""):
+            continue
+        d = e["date"] or now
+        if d < cutoff or d > now + timedelta(hours=2):
+            continue
+        name = source_name
+        if google:
+            # عنوان جوجل: «العنوان - اسم الصحيفة»
+            name = e.get("source") or (title.rsplit(" - ", 1)[1] if " - " in title else source_name)
+            if " - " in title:
+                title = title.rsplit(" - ", 1)[0]
+            ntext = norm(title + " " + (e["summary"] or ""))
+            if "الجزاير" not in ntext and not find_wilayas(ntext) and "الجزائر" not in ntext:
+                continue
+        inwin += 1
+        if debug:
+            print(f"      · {title[:90]}")
+        for item, status, wilayas in classify(title, e["summary"]):
+            key = (e["link"], item)
+            if seen is not None:
+                if key in seen:
+                    continue
+                seen.add(key)
+            rows.append({
+                "item": item, "status": status, "wilayas": wilayas,
+                "title": title[:240], "source_name": name[:58],
+                "source_url": e["link"][:590], "published_at": d.isoformat(),
+            })
+            kept += 1
+    return inwin, kept
+
+def collect(verbose=True, debug=False):
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=MAX_AGE_H)
-    rows, report = [], []
+    rows, report, seen = [], [], set()
     for name, urls in SOURCES:
-        ok = False
+        ok, last = False, ""
         for u in urls:
             try:
-                entries = parse_feed(http_get(u))
-                ok = True
-                break
+                entries = parse_feed(http_get(u)); ok = True; break
             except Exception as e:
                 last = f"{type(e).__name__}: {e}"
         if not ok:
             report.append((name, "فشل", last)); continue
-        kept = 0
-        for e in entries[:MAX_PER_FEED]:
-            if not e["title"] or not re.match(r"^https?://", e["link"] or ""):
-                continue
-            d = e["date"] or now
-            if d < cutoff or d > now + timedelta(hours=2):
-                continue
-            for item, status, wilayas in classify(e["title"], e["summary"]):
-                rows.append({
-                    "item": item, "status": status, "wilayas": wilayas,
-                    "title": e["title"][:240], "source_name": name,
-                    "source_url": e["link"][:590], "published_at": d.isoformat(),
-                })
-                kept += 1
-        report.append((name, "نجح", f"{len(entries)} خبر، {kept} بلاغ"))
+        if debug: print(f"  {name}:")
+        inwin, kept = add_rows(entries, name, now, cutoff, rows, debug, False, seen)
+        report.append((name, "نجح", f"{len(entries)} خبر، {inwin} ضمن {MAX_AGE_H} ساعة، {kept} بلاغ"))
+        time.sleep(1)
+    for q in GOOGLE_QUERIES:
+        try:
+            entries = parse_feed(http_get(google_url(q)))
+        except Exception as e:
+            report.append(("جوجل: " + q, "فشل", f"{type(e).__name__}: {e}")); time.sleep(1); continue
+        if debug: print(f"  جوجل «{q}»:")
+        inwin, kept = add_rows(entries, "أخبار جوجل", now, cutoff, rows, debug, True, seen)
+        report.append(("جوجل: " + q, "نجح", f"{len(entries)} خبر، {inwin} ضمن {MAX_AGE_H} ساعة، {kept} بلاغ"))
         time.sleep(1)
     if verbose:
         print("— حالة المصادر —")
-        for n, s, m in report:
-            print(f"  {s:5} {n}: {m}")
+        for n, st, m in report:
+            print(f"  {st:5} {n}: {m}")
     return rows
 
 # ───────── Supabase ─────────
@@ -261,8 +301,9 @@ def push(rows):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--debug", action="store_true", help="اطبع عناوين كل الأخبار ضمن النافذة الزمنية")
     a = ap.parse_args()
-    rows = collect()
+    rows = collect(debug=a.debug)
     print(f"\nالمجموع: {len(rows)} بلاغ")
     for r in rows[:30]:
         print(f"  [{r['status']:9}] {r['item']:9} {','.join(r['wilayas']) or 'وطني':20} {r['title'][:70]}")
