@@ -285,7 +285,7 @@ def sb_request(method, path, body=None, extra=None):
     headers.update(extra or {})
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(base + "/rest/v1/" + path, data=data, method=method, headers=headers)
-       try:
+    try:
         with urllib.request.urlopen(req, timeout=30) as r:
             return r.status
     except urllib.error.HTTPError as e:
