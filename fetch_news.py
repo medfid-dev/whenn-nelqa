@@ -50,6 +50,24 @@ AGGREGATORS = [
     ("تجميع: وزارة التجارة",  [gnews("وزارة التجارة الجزائر")]),
 ]
 
+# بحث داخل مواقع الصحف الجزائرية عبر Google News (عندما لا تعطينا خلاصتها إلا آخر 10 أخبار)
+_KW = "(ندرة OR نقص OR اختفاء OR نفاد OR طوابير OR غلاء OR أسعار OR أزمة)"
+SITE_DOMAINS = [
+    ("الشروق", "echoroukonline.com"), ("النهار", "ennaharonline.com"), ("البلاد", "elbilad.net"),
+    ("الخبر", "elkhabar.com"), ("وكالة الأنباء", "aps.dz"), ("TSA", "tsa-algerie.com"),
+    ("الجزائر 360", "algerie360.com"), ("الوطن", "elwatan-dz.com"), ("المجاهد", "elmoudjahid.com"),
+    ("أوراس", "awras.com"), ("شهاب", "shihabpresse.dz"), ("الجزائر اليوم", "aljazairalyoum.dz"),
+    ("اللقاء", "elikaaonline.com"), ("الإذاعة", "radioalgerie.dz"),
+]
+AGGREGATORS += [(f"موقع: {n}", [gnews(f"{_KW} site:{d}")]) for n, d in SITE_DOMAINS]
+AGGREGATORS += [
+    ("موضوع: البطاطا",  [gnews("البطاطا OR البطاطس الجزائر")]),
+    ("موضوع: الزيت",    [gnews("زيت المائدة الجزائر")]),
+    ("موضوع: الحليب",   [gnews("الحليب الجزائر")]),
+    ("موضوع: الأدوية",  [gnews("نقص الأدوية الجزائر")]),
+    ("موضوع: الخضر",    [gnews("الخضر OR الطماطم OR البصل الجزائر أسعار")]),
+]
+
 ALL_SOURCES = SOURCES + OFFICIAL + AGGREGATORS
 
 MAX_AGE_H = 36          # تجاهل ما هو أقدم
@@ -69,6 +87,11 @@ def term_re(term: str) -> re.Pattern:
     """كلمة كاملة مع سوابق عربية شائعة، ولا تلتصق بحروف عربية أخرى."""
     t = norm(term)
     return re.compile(rf"(?<![{AR}])(?:وبال|وال|بال|لل|ال|و|ب|ل|ف)?{re.escape(t)}(?![{AR}])")
+
+def cue_re(term: str) -> re.Pattern:
+    """مثل term_re لكن تقبل لواحق الضمير (ها، هم، ه، نا...) فتلتقط «غيابها» و«اختفائه»."""
+    t = norm(term)
+    return re.compile(rf"(?<![{AR}])(?:وبال|وال|بال|لل|ال|و|ب|ل|ف)?{re.escape(t)}(?:ها|هم|هن|ه|نا)?(?![{AR}])")
 
 def any_match(patterns, text):
     return any(p.search(text) for p in patterns)
@@ -106,13 +129,17 @@ ITEM_EXCLUDE = {
 }
 
 # ───────── الدلائل ─────────
-SCARCE_CUES = [term_re(t) for t in [
+SCARCE_CUES = [cue_re(t) for t in [
     "ندرة", "نقص", "شح", "اختفاء", "اختفى", "انقطاع", "نفاد", "نفدت", "نفد", "طوابير",
     "اضطراب", "اضطرابات", "غياب", "فقدان", "تذبذب", "أزمة", "مفتعلي الندرة", "يختفي", "اختفت",
+    "قلة", "تختفي", "صعوبة العثور", "صعوبة الحصول", "صعوبة في العثور", "صعوبة في الحصول",
+    "شبه اختفاء", "رفوف فارغة", "الرفوف فارغة", "تفتقد", "يفتقد",
 ]]
 AVAIL_CUES = [term_re(t) for t in [
     "وفرة", "متوفر", "متوفرة", "توفر", "تطمئن", "تطمين", "تطمينات", "يطمئن", "يطمئنون", "يطمئنان",
     "تنفي", "ينفي", "تكذيب", "تؤكد وفرة", "تموين منتظم", "التموين المنتظم", "بكامل طاقتها",
+    "تعود إلى الأسواق", "عادت إلى الأسواق", "تعود للأسواق", "عادت للأسواق", "عودة إلى الأسواق",
+    "عودة الى الاسواق", "تتوفر من جديد", "عادت للظهور", "تظهر من جديد",
 ]]
 # ───────── دلائل الأسعار (من العنوان فقط، لتقليل الضجيج) ─────────
 PRICE_UP_CUES = [term_re(t) for t in [
@@ -147,7 +174,12 @@ NEGATED_PRICE = re.compile(rf"(?<![{AR}])لا (?:يوجد |توجد )?(?:ارت�
 GENERAL_PRICE = re.compile(r"اسعار|غلاء|القدره الشرائيه|المعيشه")
 
 # نفي الندرة صراحةً: «لا توجد ندرة»، «لا نقص»
-NEGATED_SCARCE = re.compile(rf"(?<![{AR}])لا (?:توجد |يوجد |وجود |يوجد اي |توجد اي )?(?:ندره|نقص|شح|ازمه|اضطراب)")
+NEGATED_SCARCE = re.compile(
+    rf"(?<![{AR}])[وف]?(?:(?:لا|ليس هناك|ليست هناك) (?:توجد |يوجد |وجود |يوجد اي |توجد اي )?|(?:تنفي|ينفي|نفت|نفي|تنفون|ينفون) (?:وجود |اي )*)"
+    rf"(?:ندره|نقص|شح|ازمه|اضطراب)")
+# «غير متوفر» و«لا يتوفر» و«عدم توفر» تعني نفاداً لا وفرة
+NOT_AVAIL = re.compile(
+    rf"(?<![{AR}])(?:غير |ليس |ليست |لم يعد |لم تعد |عدم |لا )(?:ال)?(?:متوفر|توفر|يتوفر|تتوفر|متواجد)[هاتن]?(?![{AR}])")
 
 # ───────── الولايات ─────────
 WILAYAS = ["أدرار", "الشلف", "الأغواط", "أم البواقي", "باتنة", "بجاية", "بسكرة", "بشار", "البليدة", "البويرة",
@@ -188,7 +220,10 @@ def classify(title: str, summary: str = ""):
     t = norm(title)
     full = norm(title + " " + (summary or ""))
     scarce = any_match(SCARCE_CUES, t) or any_match(SCARCE_CUES, full)
-    avail = any_match(AVAIL_CUES, t) or any_match(AVAIL_CUES, full)
+    t_ok, full_ok = NOT_AVAIL.sub(" ", t), NOT_AVAIL.sub(" ", full)    # «غير متوفر» لا تُحسب وفرة
+    avail = any_match(AVAIL_CUES, t_ok) or any_match(AVAIL_CUES, full_ok)
+    if NOT_AVAIL.search(full):
+        scarce = True
     if NEGATED_SCARCE.search(full):
         scarce = False
         avail = True
@@ -342,14 +377,24 @@ def collect(verbose=True):
 
 # ───────── Supabase ─────────
 def sb_request(method, path, body=None, extra=None):
-    base = os.environ["SUPABASE_URL"].rstrip("/")
-    key = os.environ["SUPABASE_SERVICE_KEY"]
-    headers = {"apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json"}
+    # يتسامح مع SUPABASE_URL المنتهي بـ /rest/v1 (خطأ شائع يسبب 404)
+    base = re.sub(r"/rest/v1/?$", "", os.environ["SUPABASE_URL"].strip().rstrip("/")).rstrip("/")
+    key = os.environ["SUPABASE_SERVICE_KEY"].strip()
+    headers = {"apikey": key, "Content-Type": "application/json"}
+    if key.startswith("eyJ"):                 # المفاتيح الجديدة sb_secret_ ليست JWT: تُرسل في apikey فقط
+        headers["Authorization"] = "Bearer " + key
     headers.update(extra or {})
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(base + "/rest/v1/" + path, data=data, method=method, headers=headers)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return r.status
+    url = base + "/rest/v1/" + path
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:500]
+        print(f"خطأ Supabase: HTTP {e.code} عند {method} {base}/rest/v1/{path.split('?')[0]}")
+        print("الرد:", detail)
+        raise SystemExit(1)
 
 def push(rows):
     if not rows:
