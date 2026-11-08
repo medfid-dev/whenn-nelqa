@@ -1,0 +1,16 @@
+{
+  "name": "وين لقيتها؟",
+  "short_name": "وين لقيتها؟",
+  "description": "رادار الندرة اللحظي: اعرف وين الحليب والزيت والسميد متوفرة الآن.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "dir": "rtl",
+  "lang": "ar",
+  "background_color": "#0f766e",
+  "theme_color": "#0f766e",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
