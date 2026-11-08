@@ -58,6 +58,11 @@ main{max-width:720px;margin:0 auto;padding:6px 16px 150px}
 #radius option{color:#000}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:10px;margin-top:14px;position:relative}
 .stat{background:rgba(255,255,255,.14);border-radius:16px;padding:10px 12px}
+.stat{border:0;font:inherit;color:#fff;text-align:start;cursor:pointer;display:block;width:100%;transition:background .15s}
+.stat:hover{background:rgba(255,255,255,.24)}
+.stat:active{transform:scale(.98)}
+.stat span::after{content:"  ↓";opacity:.8}
+.news,#list .card,#list .empty{scroll-margin-top:84px}
 .stat strong{display:block;font-size:1.7rem;font-weight:700;line-height:1.1}
 .stat span{font-size:.74rem;opacity:.92;white-space:nowrap}
 .stat.ok strong::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:#7ef0a4;margin-inline-end:7px;vertical-align:middle}
@@ -591,9 +596,9 @@ function renderStats(){
   const no = groups.length - ok;
   const nn = new Set(news.filter(n => filter === 'all' || n.item === filter).map(n => n.item)).size;
   $('#stats').innerHTML =
-    `<div class="stat ok"><strong>${ok}</strong><span>أماكن متوفرة</span></div>` +
-    `<div class="stat no"><strong>${no}</strong><span>أماكن نفدت</span></div>` +
-    (nn ? `<div class="stat"><strong>${nn}</strong><span>في الأخبار</span></div>` : '');
+    `<button type="button" class="stat ok" data-go="list"><strong>${ok}</strong><span>أماكن متوفرة</span></button>` +
+    `<button type="button" class="stat no" data-go="list"><strong>${no}</strong><span>أماكن نفدت</span></button>` +
+    (nn ? `<button type="button" class="stat" data-go="news"><strong>${nn}</strong><span>في الأخبار</span></button>` : '');
 }
 
 function render(){
@@ -721,6 +726,11 @@ function shareReport(item, status, place){
 /* ============ الأحداث ============ */
 document.addEventListener('click', async e => {
   const t = e.target.closest('button, a'); if (!t) return;
+  if (t.dataset.go){
+    const el = t.dataset.go === 'news' ? $('.news') : $('#list .card, #list .empty');
+    if (el) el.scrollIntoView({behavior:'smooth', block:'start'}); else toast('لا يوجد شيء لعرضه الآن');
+    return;
+  }
   if (t.dataset.more){ const k = t.dataset.more; newsOpen.has(k) ? newsOpen.delete(k) : newsOpen.add(k); render(); return; }
   if (t.dataset.nk){ newsKind = t.dataset.nk; render(); return; }
   if (t.dataset.openloc){ openLocSheet(); return; }
