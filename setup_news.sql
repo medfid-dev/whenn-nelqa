@@ -4,14 +4,14 @@
 create table if not exists public.wl_news (
   id           bigint generated always as identity primary key,
   item         text not null check (char_length(item) between 2 and 30),
-  status       text not null check (status in ('out','available','mixed')),
+  status       text not null check (status in ('out','available','mixed','price_up','price_down')),
   wilayas      text[] not null default '{}',
   title        text not null check (char_length(title) <= 250),
   source_name  text not null check (char_length(source_name) <= 60),
   source_url   text not null check (source_url ~ '^https?://' and char_length(source_url) <= 600),
   published_at timestamptz not null,
   created_at   timestamptz not null default now(),
-  unique (source_url, item)
+  unique (source_url, item, status)
 );
 
 create index if not exists wl_news_pub_idx on public.wl_news (published_at desc);

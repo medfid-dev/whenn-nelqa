@@ -17,6 +17,7 @@
   --bg:#edf3f1; --surface:#fff; --ink:#0e1f1d; --mute:#5f716d; --line:#e1eae7;
   --brand:#0f766e; --brand-ink:#063f3a; --brand-soft:#d6eee9;
   --ok:#12803f; --ok-soft:#dcf5e4; --no:#c02a2a; --no-soft:#fde3e0; --warn:#9a5a06; --warn-soft:#fdefc9;
+  --px:#6d28d9; --px-soft:#ece3fb;
   --shadow:0 1px 2px rgba(6,63,58,.06),0 8px 24px -8px rgba(6,63,58,.16);
   --font:'Readex Pro',system-ui,-apple-system,"Segoe UI",Tahoma,"Noto Sans Arabic",Arial,sans-serif;
 }
@@ -24,6 +25,7 @@
   :root{--bg:#0b1312; --surface:#14201e; --ink:#e7f1ef; --mute:#92a7a3; --line:#23352f;
     --brand:#2dd4bf; --brand-ink:#04211e; --brand-soft:#133a35;
     --ok:#4ade80; --ok-soft:#14361f; --no:#f87171; --no-soft:#3a1818; --warn:#fbbf24; --warn-soft:#3a2a0e;
+    --px:#c4b5fd; --px-soft:#2b2150;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -10px rgba(0,0,0,.6)}
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -86,6 +88,7 @@ main{max-width:720px;margin:0 auto;padding:6px 16px 150px}
 .badge.ok{background:var(--ok-soft);color:var(--ok)}
 .badge.no{background:var(--no-soft);color:var(--no)}
 .badge.mix{background:var(--warn-soft);color:var(--warn)}
+.badge.px{background:var(--px-soft);color:var(--px)}
 .badge.old{background:var(--bg);color:var(--mute);font-weight:500}
 .badge.src{background:var(--bg);color:var(--mute);font-weight:500}
 .live{width:8px;height:8px;border-radius:50%;background:currentColor;animation:ping 1.8s ease-out infinite}
@@ -103,6 +106,9 @@ main{max-width:720px;margin:0 auto;padding:6px 16px 150px}
 
 /* بطاقة الأخبار */
 .news{background:var(--surface);border-radius:24px;padding:16px 14px 6px;margin-bottom:14px;box-shadow:var(--shadow)}
+.ntabs{display:flex;gap:4px;background:var(--bg);border-radius:14px;padding:4px;margin:4px 0 4px}
+.ntabs button{flex:1;border:0;background:transparent;border-radius:11px;padding:7px 4px;font-size:.82rem;font-weight:500;color:var(--mute)}
+.ntabs button.on{background:var(--surface);color:var(--ink);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .news h2{margin:0 0 2px;font-size:1.02rem;font-weight:600}
 .news .sub{color:var(--mute);font-size:.78rem;margin-bottom:6px;line-height:1.7}
 .nrow{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
@@ -202,7 +208,7 @@ footer{max-width:720px;margin:0 auto;padding:0 20px 140px;color:var(--mute);font
 </main>
 
 <footer>
-  البلاغات من المستخدمين ومن دون تحقق رسمي، فقد لا تكون دقيقة أو حديثة. وقسم «من الصحف» عناوين من مصادر عامة مع رابط كل خبر.<br>
+  البلاغات من المستخدمين ومن دون تحقق رسمي، فقد لا تكون دقيقة أو حديثة. وقسم «من الأخبار» عناوين من مصادر عامة عن الندرة والغلاء مع رابط كل خبر.<br>
   لا يعرض التطبيق أسعاراً ولا يجمع أسماء أو أرقاماً. البلاغات تختفي بعد ساعات قليلة.
 </footer>
 
@@ -393,7 +399,10 @@ async function load(){
 }
 
 /* ============ أخبار الندرة من مصادر عامة ============ */
-const NEWS_EXTRA = {potato:{n:'بطاطس',e:'🥔'}};
+const NEWS_EXTRA = {potato:{n:'بطاطس',e:'🥔'}, veg:{n:'خضر وفواكه',e:'🥬'}, meat:{n:'لحوم',e:'🥩'}, fish:{n:'سمك',e:'🐟'}, general:{n:'الأسعار عموماً',e:'💸'}};
+const SCARCE_ST = ['out', 'available', 'mixed'];
+const ST_TAG = {out:'ندرة', available:'وفرة', mixed:'متضارب', price_up:'غلاء', price_down:'انخفاض أسعار'};
+let newsKind = 'all';
 let news = [], newsAt = 0;
 async function loadNews(){
   if (DEMO || Date.now() - newsAt < 600e3) return;
@@ -410,26 +419,36 @@ async function loadNews(){
   } catch (e) { console.warn('wl_news:', e); }
 }
 function newsHtml(){
-  const rows = news.filter(n => filter === 'all' || n.item === filter);
-  if (!rows.length) return '';
+  const kindOk = n => newsKind === 'all' || (newsKind === 'price' ? n.status.startsWith('price') : SCARCE_ST.includes(n.status));
+  const all = news.filter(n => filter === 'all' || n.item === filter);
+  if (!all.length) return '';
+  const rows = all.filter(kindOk);
+  const tabs = [['all','الكل'],['scarce','الندرة'],['price','الأسعار']].map(([k, l]) =>
+    `<button type="button" class="${newsKind === k ? 'on' : ''}" data-nk="${k}">${l}</button>`).join('');
   const by = new Map();
   for (const n of rows){ if (!by.has(n.item)) by.set(n.item, []); by.get(n.item).push(n); }
   const cards = [...by.entries()].slice(0, 8).map(([item, list]) => {
     const it = BY_ID[item] || NEWS_EXTRA[item] || {n:item, e:'📰'};
-    const sts = new Set(list.map(x => x.status));
-    const st = (sts.has('mixed') || (sts.has('out') && sts.has('available'))) ? 'mixed' : (sts.has('out') ? 'out' : 'available');
-    const label = st === 'out' ? 'نادر حسب الأخبار' : st === 'available' ? 'وفرة حسب الأخبار' : 'أخبار متضاربة';
-    const cls = st === 'out' ? 'no' : st === 'available' ? 'ok' : 'mix';
+    const sc = new Set(list.filter(x => SCARCE_ST.includes(x.status)).map(x => x.status));
+    const up = list.some(x => x.status === 'price_up'), down = list.some(x => x.status === 'price_down');
+    let badges = '';
+    if (sc.size){
+      const st = (sc.has('mixed') || (sc.has('out') && sc.has('available'))) ? 'mixed' : (sc.has('out') ? 'out' : 'available');
+      badges += `<span class="badge ${st === 'out' ? 'no' : st === 'available' ? 'ok' : 'mix'}">${st === 'out' ? 'نادر حسب الأخبار' : st === 'available' ? 'وفرة حسب الأخبار' : 'أخبار متضاربة'}</span>`;
+    }
+    if (up) badges += '<span class="badge px">غلاء حسب الأخبار</span>';
+    else if (down) badges += '<span class="badge ok">انخفاض أسعار حسب الأخبار</span>';
     const w = [...new Set(list.flatMap(x => x.wilayas || []))].slice(0, 8);
     const links = list.slice(0, 4).filter(x => /^https?:\/\//.test(x.source_url)).map(x =>
-      `<a class="hl" href="${esc(x.source_url)}" target="_blank" rel="noopener noreferrer"><span>${esc(x.title)}</span><small>${esc(x.source_name)}، ${ago(x.published_at)}</small></a>`).join('');
+      `<a class="hl" href="${esc(x.source_url)}" target="_blank" rel="noopener noreferrer"><span>${esc(x.title)}</span><small>${ST_TAG[x.status] || ''}، ${esc(x.source_name)}، ${ago(x.published_at)}</small></a>`).join('');
     return `<div class="nrow"><div class="tile">${it.e}</div><div class="bd">
-      <div class="row1"><b>${esc(it.n)}</b><span class="badge ${cls}">${label}</span><span class="badge src">${list.length > 1 ? list.length + ' أخبار' : 'مصدر عام'}</span></div>
+      <div class="row1"><b>${esc(it.n)}</b>${badges}<span class="badge src">${list.length > 1 ? list.length + ' أخبار' : 'مصدر عام'}</span></div>
       <div class="facts"><span class="fact">📍 ${w.length ? esc(w.join('، ')) : 'على المستوى الوطني'}</span><span class="fact">🕒 ${ago(list[0].published_at)}</span></div>
       <div class="src">${links}</div></div></div>`;
-  }).join('');
-  return `<div class="news"><h2>📰 من الصحف الجزائرية</h2>
-    <div class="sub">أخبار عامة على مستوى الولاية أو الوطن، وليست بلاغات من محلات. قد تكون متأخرة أو متضاربة.</div>${cards}</div>`;
+  }).join('') || '<div class="lnote">لا أخبار من هذا النوع حالياً.</div>';
+  return `<div class="news"><h2>📰 من الأخبار والمصادر العامة</h2>
+    <div class="sub">عناوين عن الندرة والأسعار على مستوى الولاية أو الوطن، وليست بلاغات من محلات. قد تكون متأخرة أو متضاربة.</div>
+    <div class="ntabs">${tabs}</div>${cards}</div>`;
 }
 
 async function send(rep){
@@ -628,6 +647,7 @@ function shareReport(item, status, place){
 /* ============ الأحداث ============ */
 document.addEventListener('click', async e => {
   const t = e.target.closest('button, a'); if (!t) return;
+  if (t.dataset.nk){ newsKind = t.dataset.nk; render(); return; }
   if (t.dataset.openloc){ openLocSheet(); return; }
   if (t.dataset.gps){
     clearManual(); pos = CONFIG.DEFAULT_POS.slice(); posReal = false;

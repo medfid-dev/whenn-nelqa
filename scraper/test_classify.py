@@ -14,6 +14,14 @@ cases = [
     ("لا توجد ندرة في الحليب حسب وزارة التجارة", "milk", "available"),
     ("وفرة البطاطس في الأسواق بعد تدخل الدولة", "potato", "available"),
     ("طوابير أمام محلات بيع السميد في وهران", "semolina", "out"),
+    # أسعار
+    ("ارتفاع أسعار البطاطس في أسواق الجملة بوهران", "potato", "price_up"),
+    ("مرضى السكري يشتكون من غلاء الأنسولين", "medicine", "price_up"),
+    ("تراجع أسعار الدجاج بعد تدخل وزارة التجارة", "chicken", "price_down"),
+    ("ندرة الزيت وارتفاع سعره في الأسواق", "oil", "out"),
+    ("ندرة الزيت وارتفاع سعره في الأسواق", "oil", "price_up"),
+    ("غلاء المعيشة يؤرق الجزائريين", "general", "price_up"),
+    ("لهيب أسعار الخضر والفواكه مع بداية الشتاء", "veg", "price_up"),
 ]
 bad = 0
 for title, item, status in cases:
@@ -26,7 +34,8 @@ for title, item, status in cases:
 ignore = [
     "تصدير 2.3 طن من الأدوية نحو جمهورية كوت ديفوار",            # لا دليل ندرة/وفرة
     "الجزائر تعتمد أول قائمة وطنية للأدوية الأساسية",
-    "مرضى السكري يشتكون من غلاء الأنسولين",                       # «السكري» ليست «السكر»
+    "لا ارتفاع في أسعار الخبز حسب الوزارة",                         # نفي صريح للغلاء
+    "ارتفاع درجات الحرارة بولايات الجنوب",                         # «ارتفاع» وحدها ليست غلاء
     "ندرة المياه تهدد السدود",                                       # ماء غير مدعومة
     "فوز شباب بلوزداد على الزمالك",
 ]
@@ -52,6 +61,23 @@ rss = """<?xml version='1.0'?><rss version='2.0'><channel><item><title>ندرة 
 <description>&lt;p&gt;نص&lt;/p&gt;</description></item></channel></rss>""".encode("utf-8")
 f = parse_feed(rss)
 assert f[0]["title"] == "ندرة الزيت" and f[0]["summary"] == "نص" and f[0]["date"].year == 2026
+
+# تجميع Google News: وسم <source> وإزالة اسم الناشر من العنوان وإسقاط التكرار
+import fetch_news
+gn = """<?xml version='1.0'?><rss version='2.0'><channel>
+<item><title>ندرة الزيت في الأسواق - التلفزيون الجزائري</title><link>https://news.google.com/rss/articles/AAA</link>
+<pubDate>Sun, 08 Nov 2026 01:00:00 +0000</pubDate><description>x</description><source url="https://entv.dz">التلفزيون الجزائري</source></item>
+<item><title>ندرة الزيت في الأسواق - الإذاعة الجزائرية</title><link>https://news.google.com/rss/articles/BBB</link>
+<pubDate>Sun, 08 Nov 2026 01:05:00 +0000</pubDate><description>x</description><source url="https://radioalgerie.dz">الإذاعة الجزائرية</source></item>
+</channel></rss>""".encode("utf-8")
+assert parse_feed(gn)[0]["src"] == "التلفزيون الجزائري"
+from datetime import datetime, timezone
+fetch_news.ALL_SOURCES = [("تجميع: ندرة", ["u"])]
+fetch_news.http_get = lambda u, timeout=15: gn.replace(b"Sun, 08 Nov 2026", datetime.now(timezone.utc).strftime("%a, %d %b %Y").encode())
+fetch_news.time.sleep = lambda s: None
+rows = fetch_news.collect(verbose=False)
+assert len(rows) == 1, rows                       # الخبران بعنوان واحد → خبر واحد
+assert rows[0]["source_name"] == "التلفزيون الجزائري" and rows[0]["title"] == "ندرة الزيت في الأسواق", rows
 
 print("\nفشل:", bad)
 raise SystemExit(1 if bad else 0)

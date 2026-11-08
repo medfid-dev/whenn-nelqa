@@ -15,29 +15,45 @@ from email.utils import parsedate_to_datetime
 
 # ───────── المصادر: لكل جريدة عدة مسارات محتملة، يُستخدم أول مسار يعمل ─────────
 SOURCES = [
-    ("النهار أونلاين",   ["https://www.ennaharonline.com/feed"]),
+    ("النهار أونلاين",   ["https://www.ennaharonline.com/feed"]),   # مؤكَّد
     ("الشروق أونلاين",   ["https://www.echoroukonline.com/feed", "https://www.echoroukonline.com/feed/"]),
     ("البلاد",           ["https://www.elbilad.net/feed", "https://www.elbilad.net/rss"]),
     ("الخبر",            ["https://www.elkhabar.com/feed", "https://www.elkhabar.com/rss"]),
+    ("شهاب برس",         ["https://www.shihabpresse.dz/feed"]),
     ("الجزائر اليوم",    ["https://www.aljazairalyoum.dz/feed"]),
     ("أوراس",            ["https://www.awras.com/feed"]),
     ("اللقاء",           ["https://elikaaonline.com/feed"]),
-    # أُزيلت شهاب برس والأيام نيوز والمساء: تغلق الاتصال أو لا خلاصة لها. أخبارها تصل عبر جوجل أدناه.
+    ("الأيام نيوز",      ["https://www.elayem.dz/feed", "https://elayem.dz/feed"]),
+    ("المساء",           ["https://www.el-massa.com/feed"]),
 ]
 
-# خلاصات أخبار جوجل: بحث مجاني بصيغة RSS يغطي كل الصحف الجزائرية (آخر يومين)
-GOOGLE_QUERIES = [
-    "ندرة الزيت الجزائر", "ندرة الحليب الجزائر", "ندرة السميد الجزائر", "ندرة الفرينة الجزائر",
-    "ندرة البطاطس الجزائر", "ندرة الأدوية الجزائر", "ندرة غاز البوتان الجزائر", "ندرة الوقود الجزائر",
-    "ندرة السكر الجزائر", "ندرة الدجاج الجزائر", "ندرة البيض الجزائر", "ندرة السيولة الجزائر",
-    "نفاد الخبز الجزائر", "اختفاء من الأسواق الجزائر", "طوابير الجزائر مواد غذائية",
+# ───────── مصادر غير صحفية ─────────
+# وكالة أنباء وإذاعة رسميتان: المسارات محتملة (غير مؤكَّدة) وتُجرَّب تلقائياً، والفاشل يظهر في السجل
+OFFICIAL = [
+    ("وكالة الأنباء الجزائرية", ["https://www.aps.dz/ar/feed",
+                                 "https://www.aps.dz/ar/economie?format=feed&type=rss",
+                                 "https://www.aps.dz/ar/algerie?format=feed&type=rss"]),
+    ("الإذاعة الجزائرية",       ["https://www.radioalgerie.dz/news/ar/rss.xml",
+                                 "https://www.radioalgerie.dz/news/ar/feed"]),
 ]
-def google_url(q):
-    return ("https://news.google.com/rss/search?q=" + urllib.parse.quote(q + " when:2d")
-            + "&hl=ar&gl=DZ&ceid=DZ:ar")
+
+# تجميع Google News: يلتقط التلفزيون والإذاعة والوكالات والبيانات الرسمية ومواقع كثيرة غير المذكورة أعلاه.
+# اسم الناشر الحقيقي يؤخذ من وسم <source> في الخبر نفسه، فيظهر في التطبيق كمصدر.
+def gnews(q):
+    return "https://news.google.com/rss/search?" + urllib.parse.urlencode(
+        {"q": q + " when:2d", "hl": "ar", "gl": "DZ", "ceid": "DZ:ar"})
+
+AGGREGATORS = [
+    ("تجميع: ندرة",           [gnews("ندرة الجزائر")]),
+    ("تجميع: نقص واختفاء",    [gnews("نقص OR اختفاء OR نفاد الجزائر")]),
+    ("تجميع: غلاء",           [gnews('غلاء OR "ارتفاع الأسعار" الجزائر')]),
+    ("تجميع: وزارة التجارة",  [gnews("وزارة التجارة الجزائر")]),
+]
+
+ALL_SOURCES = SOURCES + OFFICIAL + AGGREGATORS
 
 MAX_AGE_H = 36          # تجاهل ما هو أقدم
-MAX_PER_FEED = 60
+MAX_PER_FEED = 100
 UA = "WheenLqithaBot/1.0 (+RSS reader for a community scarcity radar; titles and links only)"
 
 # ───────── تطبيع النص العربي ─────────
@@ -73,10 +89,13 @@ ITEM_TERMS = {
     "pasta":     ["المعجنات", "المعكرونة", "العجائن"],
     "butane":    ["غاز البوتان", "البوتان", "قارورات الغاز", "قارورة الغاز"],
     "fuel":      ["البنزين", "المازوت", "الوقود", "الديزل", "غاز المدينة"],
-    "medicine":  ["الأدوية", "الدواء", "دواء", "أدوية"],
+    "medicine":  ["الأدوية", "الدواء", "دواء", "أدوية", "الأنسولين", "الانسولين"],
     "diapers":   ["الحفاضات", "حفاضات", "الحفاظات"],
     "cash":      ["السيولة", "سيولة نقدية", "الأوراق النقدية"],
     "potato":    ["البطاطس", "البطاطا", "بطاطس"],
+    "veg":       ["الخضر", "الخضروات", "الفواكه", "الطماطم", "البصل", "الثوم", "الفلفل", "الجزر"],
+    "meat":      ["اللحوم الحمراء", "لحوم حمراء", "لحم الغنم", "لحم البقر", "لحم الخروف", "اللحوم"],
+    "fish":      ["السمك", "الأسماك", "السردين"],
 }
 ITEM_RE = {k: [term_re(t) for t in v] for k, v in ITEM_TERMS.items()}
 
@@ -95,6 +114,23 @@ AVAIL_CUES = [term_re(t) for t in [
     "وفرة", "متوفر", "متوفرة", "توفر", "تطمئن", "تطمين", "تطمينات", "يطمئن", "يطمئنون", "يطمئنان",
     "تنفي", "ينفي", "تكذيب", "تؤكد وفرة", "تموين منتظم", "التموين المنتظم", "بكامل طاقتها",
 ]]
+# ───────── دلائل الأسعار (من العنوان فقط، لتقليل الضجيج) ─────────
+PRICE_UP_CUES = [term_re(t) for t in [
+    "غلاء", "لهيب الأسعار", "لهيب أسعار", "ارتفاع سعره", "ارتفاع سعرها", "ارتفاع أسعارها", "ارتفاع أسعاره", "التهاب الأسعار", "التهاب أسعار", "جنون الأسعار", "أسعار ملتهبة", "أسعار نارية",
+    "أسعار خيالية", "أسعار قياسية", "أسعار مرتفعة", "مضاربة", "تلتهب",
+    "ارتفاع الأسعار", "ارتفاع أسعار", "ارتفاع سعر", "ارتفاع في الأسعار", "ارتفاع في أسعار", "ارتفاع في سعر",
+    "ارتفاعا في الأسعار", "زيادة في الأسعار", "زيادة في أسعار", "زيادة في سعر", "زيادة أسعار",
+    "زيادات في أسعار", "زيادات في الأسعار", "ترتفع أسعار", "ترتفع الأسعار", "ارتفعت أسعار", "ارتفعت الأسعار",
+    "ارتفع سعر", "يرتفع سعر", "تضاعف سعر", "تضاعفت أسعار", "تضاعف أسعار",
+]]
+PRICE_DOWN_CUES = [term_re(t) for t in [
+    "انخفاض الأسعار", "انخفاض أسعار", "انخفاض سعر", "انخفاض في الأسعار", "انخفاض في أسعار",
+    "تراجع الأسعار", "تراجع أسعار", "تراجع سعر", "تراجع في الأسعار", "تراجع في أسعار",
+    "هبوط الأسعار", "هبوط أسعار", "تخفيض الأسعار", "تخفيض أسعار", "انخفضت أسعار", "تنخفض أسعار", "تراجعت أسعار",
+]]
+NEGATED_PRICE = re.compile(rf"(?<![{AR}])لا (?:يوجد |توجد )?(?:ارتفاع|زياده|غلاء)")
+GENERAL_PRICE = re.compile(r"اسعار|غلاء|القدره الشرائيه|المعيشه")
+
 # نفي الندرة صراحةً: «لا توجد ندرة»، «لا نقص»
 NEGATED_SCARCE = re.compile(rf"(?<![{AR}])لا (?:توجد |يوجد |وجود |يوجد اي |توجد اي )?(?:ندره|نقص|شح|ازمه|اضطراب)")
 
@@ -133,7 +169,7 @@ def find_wilayas(text):
 
 # ───────── التصنيف ─────────
 def classify(title: str, summary: str = ""):
-    """يرجع قائمة بلاغات [(item, status, wilayas)] أو قائمة فارغة."""
+    """يرجع قائمة [(item, status, wilayas)]. الحالات: out / available / mixed (ندرة) و price_up / price_down (أسعار)."""
     t = norm(title)
     full = norm(title + " " + (summary or ""))
     scarce = any_match(SCARCE_CUES, t) or any_match(SCARCE_CUES, full)
@@ -141,9 +177,19 @@ def classify(title: str, summary: str = ""):
     if NEGATED_SCARCE.search(full):
         scarce = False
         avail = True
-    if not (scarce or avail):
+    price = None
+    if not NEGATED_PRICE.search(t):
+        if any_match(PRICE_UP_CUES, t):
+            price = "price_up"
+        elif any_match(PRICE_DOWN_CUES, t):
+            price = "price_down"
+    if not (scarce or avail or price):
         return []
-    status = "mixed" if (scarce and avail) else ("out" if scarce else "available")
+    statuses = []
+    if scarce or avail:
+        statuses.append("mixed" if (scarce and avail) else ("out" if scarce else "available"))
+    if price:
+        statuses.append(price)
     wilayas = find_wilayas(full)
 
     # السلع: العنوان له الأولوية، فإن لم نجد نبحث في الملخص
@@ -158,11 +204,16 @@ def classify(title: str, summary: str = ""):
             break
     if "baby_milk" in found and "milk" in found:
         found.remove("milk")
-    return [(i, status, wilayas) for i in found[:3]]
+    if not found:
+        # خبر غلاء عام بلا سلعة محددة
+        if price and GENERAL_PRICE.search(t):
+            return [("general", price, wilayas)]
+        return []
+    return [(i, st, wilayas) for i in found[:3] for st in statuses]
 
 # ───────── جلب RSS ─────────
-def http_get(url, timeout=20):
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
+def http_get(url, timeout=15):
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/rss+xml, application/xml, text/xml, */*"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
 
@@ -192,7 +243,7 @@ def parse_feed(xml_bytes):
             "title": strip_html(it.findtext("title")),
             "link": (it.findtext("link") or "").strip(),
             "summary": strip_html(it.findtext("description")),
-            "source": strip_html(it.findtext("source")),
+            "src": strip_html(it.findtext("source")),
             "date": parse_date(it.findtext("pubDate") or it.findtext("{http://purl.org/dc/elements/1.1/}date")),
         })
     # Atom
@@ -206,144 +257,76 @@ def parse_feed(xml_bytes):
             "title": strip_html(en.findtext(ns + "title")),
             "link": link.strip(),
             "summary": strip_html(en.findtext(ns + "summary")),
+            "src": "",
             "date": parse_date(en.findtext(ns + "updated") or en.findtext(ns + "published")),
         })
     return out
 
-def add_rows(entries, source_name, now, cutoff, rows, debug, google=False, seen=None):
-    kept = inwin = 0
-    for e in entries[:MAX_PER_FEED]:
-        title = e["title"]
-        if not title or not re.match(r"^https?://", e["link"] or ""):
-            continue
-        d = e["date"] or now
-        if d < cutoff or d > now + timedelta(hours=2):
-            continue
-        name = source_name
-        if google:
-            # عنوان جوجل: «العنوان - اسم الصحيفة»
-            name = e.get("source") or (title.rsplit(" - ", 1)[1] if " - " in title else source_name)
-            if " - " in title:
-                title = title.rsplit(" - ", 1)[0]
-            ntext = norm(title + " " + (e["summary"] or ""))
-            if "الجزاير" not in ntext and not find_wilayas(ntext) and "الجزائر" not in ntext:
-                continue
-        inwin += 1
-        if debug:
-            print(f"      · {title[:90]}")
-        for item, status, wilayas in classify(title, e["summary"]):
-            key = (e["link"], item)
-            if seen is not None:
-                if key in seen:
-                    continue
-                seen.add(key)
-            rows.append({
-                "item": item, "status": status, "wilayas": wilayas,
-                "title": title[:240], "source_name": name[:58],
-                "source_url": e["link"][:590], "published_at": d.isoformat(),
-            })
-            kept += 1
-    return inwin, kept
-
-def collect(verbose=True, debug=False):
+def collect(verbose=True):
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=MAX_AGE_H)
-    rows, report, seen = [], [], set()
-    for name, urls in SOURCES:
-        ok, last = False, ""
+    rows, report = [], []
+    seen = set()
+    for name, urls in ALL_SOURCES:
+        ok = False
         for u in urls:
             try:
-                entries = parse_feed(http_get(u)); ok = True; break
+                entries = parse_feed(http_get(u))
+                ok = True
+                break
             except Exception as e:
                 last = f"{type(e).__name__}: {e}"
         if not ok:
             report.append((name, "فشل", last)); continue
-        if debug: print(f"  {name}:")
-        inwin, kept = add_rows(entries, name, now, cutoff, rows, debug, False, seen)
-        report.append((name, "نجح", f"{len(entries)} خبر، {inwin} ضمن {MAX_AGE_H} ساعة، {kept} بلاغ"))
-        time.sleep(1)
-    for q in GOOGLE_QUERIES:
-        try:
-            entries = parse_feed(http_get(google_url(q)))
-        except Exception as e:
-            report.append(("جوجل: " + q, "فشل", f"{type(e).__name__}: {e}")); time.sleep(1); continue
-        if debug: print(f"  جوجل «{q}»:")
-        inwin, kept = add_rows(entries, "أخبار جوجل", now, cutoff, rows, debug, True, seen)
-        report.append(("جوجل: " + q, "نجح", f"{len(entries)} خبر، {inwin} ضمن {MAX_AGE_H} ساعة، {kept} بلاغ"))
+        kept = 0
+        for e in entries[:MAX_PER_FEED]:
+            if not e["title"] or not re.match(r"^https?://", e["link"] or ""):
+                continue
+            d = e["date"] or now
+            if d < cutoff or d > now + timedelta(hours=2):
+                continue
+            title, sname = e["title"], name
+            if e.get("src"):                       # تجميع: الناشر الحقيقي واسمه في آخر العنوان
+                sname = e["src"][:60]
+                suffix = " - " + e["src"]
+                if title.endswith(suffix):
+                    title = title[:-len(suffix)].strip()
+            tkey = norm(title)[:80]
+            for item, status, wilayas in classify(title, e["summary"]):
+                k = (tkey, item, status)
+                if k in seen:                      # نفس الخبر من مصدرين
+                    continue
+                seen.add(k)
+                rows.append({
+                    "item": item, "status": status, "wilayas": wilayas,
+                    "title": title[:240], "source_name": sname,
+                    "source_url": e["link"][:590], "published_at": d.isoformat(),
+                })
+                kept += 1
+        report.append((name, "نجح", f"{len(entries)} خبر، {kept} بلاغ"))
         time.sleep(1)
     if verbose:
         print("— حالة المصادر —")
-        for n, st, m in report:
-            print(f"  {st:5} {n}: {m}")
+        for n, s, m in report:
+            print(f"  {s:5} {n}: {m}")
     return rows
 
 # ───────── Supabase ─────────
-def clean_url(u: str) -> str:
-    u = (u or "").strip().strip("'\"").rstrip("/")
-    for suffix in ("/rest/v1", "/rest"):
-        if u.endswith(suffix):
-            u = u[: -len(suffix)].rstrip("/")
-    return u
-
-def sb_request(method, path, body=None, extra=None, quiet=False):
-    base = clean_url(os.environ["SUPABASE_URL"])
-    key = os.environ["SUPABASE_SERVICE_KEY"].strip()
+def sb_request(method, path, body=None, extra=None):
+    base = os.environ["SUPABASE_URL"].rstrip("/")
+    key = os.environ["SUPABASE_SERVICE_KEY"]
     headers = {"apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json"}
     headers.update(extra or {})
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(base + "/rest/v1/" + path, data=data, method=method, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return r.status, r.read().decode("utf-8", "replace")
-    except urllib.error.HTTPError as e:
-        return e.code, e.read().decode("utf-8", "replace")
-
-def explain(status, body):
-    code = ""
-    try:
-        code = json.loads(body).get("code", "")
-    except Exception:
-        pass
-    if code == "PGRST205" or "Could not find the table" in body:
-        return "الجدول wl_news غير موجود في هذا المشروع. شغّل setup_news.sql في SQL Editor ثم أعد المحاولة."
-    if code == "PGRST125" or "Invalid path" in body:
-        return "مسار الطلب غير صالح: راجع SUPABASE_URL، يجب أن يكون https://xxxx.supabase.co فقط."
-    if status in (401, 403) or "Invalid API key" in body or "secret API key" in body:
-        return "المفتاح مرفوض: تأكد أن SUPABASE_SERVICE_KEY هو المفتاح السري (secret / service_role) الصحيح وبلا مسافات."
-    if status == 404:
-        return "404 بلا رمز واضح: غالباً SUPABASE_URL يشير إلى مشروع أو عنوان خاطئ."
-    if status == 400:
-        return "قيد في الجدول رفض بعض الصفوف (راجع نص الرد أعلاه)."
-    return "خطأ غير متوقع، أرسل نص الرد أعلاه للمساعدة."
-
-def preflight():
-    raw = os.environ.get("SUPABASE_URL", "")
-    u = clean_url(raw)
-    print("— فحص الاتصال بـ Supabase —")
-    print(f"  طول الرابط: {len(u)} | يبدأ بـ https: {u.startswith('https://')} | ينتهي بـ supabase.co: {u.endswith('.supabase.co')}")
-    if raw.strip() != u:
-        print("  (صُحّح الرابط تلقائياً: أُزيلت مسافات أو / أو rest/v1 زائدة)")
-    st, body = sb_request("GET", "wl_news?select=id&limit=1")
-    if st == 200:
-        print("  الجدول wl_news موجود والمفتاح مقبول ✓")
-        return True
-    print(f"  فشل الفحص: HTTP {st}")
-    print("  رد Supabase:", body[:300])
-    print("  التشخيص:", explain(st, body))
-    return False
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return r.status
 
 def push(rows):
-    if not preflight():
-        raise SystemExit(1)
     if not rows:
         print("لا بلاغات جديدة."); return
-    st, body = sb_request("POST", "wl_news?on_conflict=source_url,item", rows,
-                          {"Prefer": "resolution=ignore-duplicates,return=minimal"})
-    if st not in (200, 201, 204):
-        print(f"فشل الإرسال: HTTP {st}")
-        print("رد Supabase:", body[:400])
-        print("التشخيص:", explain(st, body))
-        raise SystemExit(1)
+    st = sb_request("POST", "wl_news?on_conflict=source_url,item,status", rows,
+                    {"Prefer": "resolution=ignore-duplicates,return=minimal"})
     print(f"أُرسل {len(rows)} بلاغ (HTTP {st}).")
     old = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     sb_request("DELETE", "wl_news?published_at=lt." + urllib.parse.quote(old), None, {"Prefer": "return=minimal"})
@@ -352,9 +335,8 @@ def push(rows):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--debug", action="store_true", help="اطبع عناوين كل الأخبار ضمن النافذة الزمنية")
     a = ap.parse_args()
-    rows = collect(debug=a.debug)
+    rows = collect()
     print(f"\nالمجموع: {len(rows)} بلاغ")
     for r in rows[:30]:
         print(f"  [{r['status']:9}] {r['item']:9} {','.join(r['wilayas']) or 'وطني':20} {r['title'][:70]}")
